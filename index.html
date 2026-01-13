@@ -3,13 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Layered Greywash</title>
-
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#111111">
-<link rel="apple-touch-icon" href="icon-512.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Tattoo Shading Pro – Greywash Extended</title>
 
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#111;color:#fff;}
@@ -20,13 +14,13 @@ canvas{width:100%;max-width:900px;margin:auto;background:#fff;border-radius:8px;
 button{padding:10px 14px;border-radius:8px;border:none;background:#222;color:#fff;font-weight:600;}
 button:active{background:#444;}
 input[type=file]{color:#fff;}
-.progress-container{max-width:900px;margin:auto;background:#222;border-radius:8px;overflow:hidden;height:18px;}
-.progress-bar{height:100%;width:0%;background:#4caf50;transition:width 0.1s linear;}
+.progress-container{max-width:900px;margin:auto;background:#222;border-radius:8px;overflow:hidden;height:18px;margin-top:8px;}
+.progress-bar{height:100%;width:0%;background:#4caf50;transition:width 0.05s linear;}
 .guide{max-width:900px;margin:auto;background:#222;padding:12px;border-radius:8px;font-size:14px;line-height:1.5;margin-top:8px;}
 </style>
 </head>
 <body>
-<header>Tattoo Shading Pro – Layered Greywash</header>
+<header>Tattoo Shading Pro – Greywash Extended</header>
 
 <main>
 <input type="file" accept="image/*" id="upload">
@@ -35,7 +29,6 @@ input[type=file]{color:#fff;}
 <div class="controls">
 <button onclick="generateShading()">Generate Shading</button>
 <button onclick="resetCanvas()">Reset</button>
-<button onclick="exportPDF()">Export PDF</button>
 </div>
 
 <div class="progress-container">
@@ -45,7 +38,6 @@ input[type=file]{color:#fff;}
 <div class="guide" id="guide"></div>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 const canvas=document.getElementById("canvas");
 const ctx=canvas.getContext("2d");
@@ -55,9 +47,10 @@ const guide=document.getElementById("guide");
 let baseImage=null;
 let outlineData=null;
 const lightAngle=-Math.PI/3; // lysretning
+
+// Lag til heavy/medium/light
 let layers={heavy:null,medium:null,light:null};
 
-// Upload stencil
 document.getElementById("upload").addEventListener("change",e=>{
   const file=e.target.files[0];
   if(!file) return;
@@ -70,7 +63,6 @@ document.getElementById("upload").addEventListener("change",e=>{
     baseImage=img;
     outlineData=ctx.getImageData(0,0,canvas.width,canvas.height);
 
-    // Opret separate layer canvases
     layers.heavy=document.createElement("canvas");
     layers.medium=document.createElement("canvas");
     layers.light=document.createElement("canvas");
@@ -105,7 +97,7 @@ function detectEdges(imgData){
   return edges;
 }
 
-// Generate shading layers
+// Generate shading
 function generateShading(){
   if(!outlineData) return;
   ctx.putImageData(outlineData,0,0);
@@ -114,24 +106,28 @@ function generateShading(){
   const batchSize=2000;
 
   function processBatch(){
-    for(let b=0;b<batchSize&&i<edges.length;i++,b++){
+    for(let b=0;b<batchSize && i<edges.length;i++,b++){
       const {x,y}=edges[i];
-      drawLayerStroke(x,y,layers.heavy,0,4,0.28,12);
-      drawLayerStroke(x,y,layers.medium,4,8,0.18,8);
-      drawLayerStroke(x,y,layers.light,8,12,0.10,5);
+      // Heavy further out
+      drawLayerStroke(x,y,layers.heavy,0,6,0.28,16);
+      drawLayerStroke(x,y,layers.medium,6,12,0.18,12);
+      drawLayerStroke(x,y,layers.light,12,20,0.10,8);
     }
-    progressBar.style.width=((i/edges.length)*100).toFixed(1)+"%";
+    // Statusbar
+    const percent=((i/edges.length)*100).toFixed(1);
+    progressBar.style.width=percent+"%";
+    progressBar.textContent=percent+"%";
     if(i<edges.length) requestAnimationFrame(processBatch);
     else drawCombined();
   }
   requestAnimationFrame(processBatch);
 }
 
-// Tegn stroke på given layer
 function drawLayerStroke(x,y,layer,offsetMin,offsetMax,alpha,length){
   const sctx=layer.getContext("2d");
   sctx.save();
   sctx.lineCap="round";
+
   const dx=Math.cos(lightAngle);
   const dy=Math.sin(lightAngle);
   const offset=offsetMin + Math.random()*(offsetMax-offsetMin);
@@ -160,21 +156,6 @@ function drawCombined(){
   ctx.drawImage(layers.medium,0,0);
   ctx.drawImage(layers.light,0,0);
   drawGuide();
-}
-
-// Export PDF med separate lag
-function exportPDF(){
-  const { jsPDF } = window.jspdf;
-  const pdf=new jsPDF({
-    orientation:"portrait",
-    unit:"px",
-    format:[canvas.width,canvas.height]
-  });
-  pdf.addImage(baseImage.src, "PNG", 0,0,canvas.width,canvas.height);
-  pdf.addImage(layers.heavy.toDataURL(), "PNG",0,0,canvas.width,canvas.height);
-  pdf.addImage(layers.medium.toDataURL(), "PNG",0,0,canvas.width,canvas.height);
-  pdf.addImage(layers.light.toDataURL(), "PNG",0,0,canvas.width,canvas.height);
-  pdf.save("tattoo_layers.pdf");
 }
 
 // Auto-guide
