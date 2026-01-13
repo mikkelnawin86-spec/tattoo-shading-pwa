@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – High Quality Illustrative</title>
+<title>Tattoo Shading Pro – Live Preview</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#111111">
@@ -29,7 +29,7 @@ input[type=file]{color:#fff;}
 </head>
 <body>
 
-<header>Tattoo Shading Pro – High Quality Illustrative</header>
+<header>Tattoo Shading Pro – Live Preview</header>
 
 <main>
 <input type="file" accept="image/*" id="upload">
@@ -46,14 +46,14 @@ input[type=file]{color:#fff;}
 <input type="range" id="mediumSlider" min="0.05" max="0.5" step="0.01" value="0.25">
 <label>Light intensity <span id="lightVal">0.15</span></label>
 <input type="range" id="lightSlider" min="0.02" max="0.3" step="0.01" value="0.15">
-<label>Spread distance <span id="spreadVal">30</span>px</label>
-<input type="range" id="spreadSlider" min="5" max="60" step="1" value="30">
+<label>Spread distance <span id="spreadVal">35</span>px</label>
+<input type="range" id="spreadSlider" min="5" max="60" step="1" value="35">
 </div>
 
 <canvas id="canvas"></canvas>
 
 <div class="controls">
-<button onclick="generateShading()">Generate Shading</button>
+<button onclick="startLiveShading()">Start Live Shading</button>
 <button onclick="resetCanvas()">Reset</button>
 <button onclick="exportPDF()">Export PDF</button>
 </div>
@@ -138,39 +138,45 @@ function detectEdges(imgData){
   return edges;
 }
 
-// generate shading
-function generateShading(){
-  if(!outlineData) return;
-  ctx.putImageData(outlineData,0,0);
-  const edges=detectEdges(outlineData);
-  let i=0;
-  const batchSize=1500; // mindre for bedre kvalitet
-
-  const heavyIntensity=parseFloat(heavySlider.value);
-  const mediumIntensity=parseFloat(mediumSlider.value);
-  const lightIntensity=parseFloat(lightSlider.value);
-  const spread=parseInt(spreadSlider.value);
-
-  function processBatch(){
-    for(let b=0;b<batchSize && i<edges.length;i++,b++){
-      const {x,y}=edges[i];
-      // High-quality Artistic layering
-      drawLayer(x,y,layers.heavy,0,spread,heavyIntensity,22,true);
-      drawLayer(x,y,layers.medium,spread/2,spread*0.8,mediumIntensity,18,true);
-      drawLayer(x,y,layers.light,spread*0.6,spread,lightIntensity,14,true);
-    }
-    const pct=((i/edges.length)*100).toFixed(1)+"%";
-    progressBar.style.width=pct+"%";
-    progressBar.textContent=pct+"%";
-    if(i<edges.length) requestAnimationFrame(processBatch);
-    else combineLayers();
-  }
-  progressBar.textContent="";
-  requestAnimationFrame(processBatch);
+// adaptive stroke density: darker areas get more passes
+function computePasses(alpha){
+  return Math.ceil(alpha*6)+2;
 }
 
-// Artistic shading function
-function drawLayer(x,y,layer,offsetMin,offsetMax,alpha,length,artistic){
+// live shading variables
+let liveEdges=[];
+let liveIndex=0;
+let isLive=false;
+
+function startLiveShading(){
+  if(!outlineData) return;
+  ctx.putImageData(outlineData,0,0);
+  liveEdges=detectEdges(outlineData);
+  liveIndex=0;
+  isLive=true;
+  liveLoop();
+}
+
+function liveLoop(){
+  if(!isLive) return;
+  const batchSize=500; // stroke-for-stroke
+  for(let b=0;b<batchSize && liveIndex<liveEdges.length;liveIndex++,b++){
+    const {x,y}=liveEdges[liveIndex];
+    drawLayerAdaptive(x,y,layers.heavy,0,parseInt(spreadSlider.value),parseFloat(heavySlider.value),24,true);
+    drawLayerAdaptive(x,y,layers.medium,parseInt(spreadSlider.value)/2,parseInt(spreadSlider.value)*0.8,parseFloat(mediumSlider.value),18,true);
+    drawLayerAdaptive(x,y,layers.light,parseInt(spreadSlider.value)*0.6,parseInt(spreadSlider.value),parseFloat(lightSlider.value),14,true);
+  }
+  const pct=((liveIndex/liveEdges.length)*100).toFixed(1)+"%";
+  progressBar.style.width=pct+"%";
+  progressBar.textContent=pct+"%";
+
+  combineLayers();
+  if(liveIndex<liveEdges.length) requestAnimationFrame(liveLoop);
+  else { isLive=false; drawGuide(); }
+}
+
+// Artistic adaptive shading function
+function drawLayerAdaptive(x,y,layer,offsetMin,offsetMax,alpha,length,artistic){
   const sctx=layer.getContext("2d");
   sctx.save();
   sctx.lineCap="round";
@@ -183,25 +189,22 @@ function drawLayer(x,y,layer,offsetMin,offsetMax,alpha,length,artistic){
   const ty=y-dy*offset;
 
   let angle=lightAngle+Math.PI/2+(Math.random()-0.5)*0.35;
+  if(artistic) angle += (Math.random()-0.5)*0.7;
 
-  // Artistic: vary angle for whip / pendulum effect
-  if(artistic){
-    angle += (Math.random()-0.5)*0.7;
+  const passes=computePasses(alpha);
+  for(let p=0;p<passes;p++){
+    const grad=sctx.createLinearGradient(x,y,tx+Math.cos(angle)*(length+p),ty+Math.sin(angle)*(length+p));
+    grad.addColorStop(0,`rgba(0,0,0,${alpha/(p+1)})`);
+    grad.addColorStop(0.3,`rgba(0,0,0,${alpha*0.6/(p+1)})`);
+    grad.addColorStop(0.6,`rgba(0,0,0,${alpha*0.3/(p+1)})`);
+    grad.addColorStop(1,"rgba(0,0,0,0)");
+    sctx.strokeStyle=grad;
+    sctx.lineWidth=1+Math.random()*1.2;
+    sctx.beginPath();
+    sctx.moveTo(x,y);
+    sctx.lineTo(tx+Math.cos(angle)*(length+p),ty+Math.sin(angle)*(length+p));
+    sctx.stroke();
   }
-
-  const grad=sctx.createLinearGradient(x,y,tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
-  // Gradient with clear greywash distinction
-  grad.addColorStop(0,`rgba(0,0,0,${alpha})`);
-  grad.addColorStop(0.3,`rgba(0,0,0,${alpha*0.6})`);
-  grad.addColorStop(0.6,`rgba(0,0,0,${alpha*0.3})`);
-  grad.addColorStop(1,"rgba(0,0,0,0)");
-
-  sctx.strokeStyle=grad;
-  sctx.lineWidth=1+Math.random()*1.2;
-  sctx.beginPath();
-  sctx.moveTo(x,y);
-  sctx.lineTo(tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
-  sctx.stroke();
   sctx.restore();
 }
 
@@ -211,7 +214,6 @@ function combineLayers(){
   ctx.drawImage(layers.heavy,0,0);
   ctx.drawImage(layers.medium,0,0);
   ctx.drawImage(layers.light,0,0);
-  drawGuide();
 }
 
 function exportPDF(){
@@ -226,12 +228,12 @@ function exportPDF(){
 
 function drawGuide(){
   guide.innerHTML=`
-<b>Artistic Tattoo Guide – Poseidon Lucius</b><br><br>
+<b>Live Adaptive Artistic Tattoo Guide – Poseidon Lucius</b><br><br>
 <b>Heavy shadows:</b> 11–13RM · Greywash 1:3–1:4 · 8.8–9.2V<br>
 <b>Medium tones:</b> 15–17M · Greywash 1:6–1:8 · 7.5–8.0V<br>
 <b>Light fade / whip:</b> 17–23CM · Greywash 1:10–1:12 · 6.8–7.2V<br><br>
-<b>Preset style:</b> ${presetSelect.value} · Artistic / Illustrative<br>
-<b>Use sliders to fine-tune greywash intensity and spread</b>
+<b>Preset style:</b> ${presetSelect.value} · Adaptive Live Preview<br>
+<b>Sliders update intensity and spread in real-time</b>
 `;
 }
 
