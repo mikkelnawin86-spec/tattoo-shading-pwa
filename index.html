@@ -3,12 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Greywash Extended</title>
+<title>Tattoo Shading Pro – Pro Greywash</title>
+
+<!-- PWA support -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
+<link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#111;color:#fff;}
 header{padding:12px;text-align:center;background:#000;font-weight:600;}
-main{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;}
+main{display:grid;gap:10px;padding:10px;}
 canvas{width:100%;max-width:900px;margin:auto;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,0.4);}
 .controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
 button{padding:10px 14px;border-radius:8px;border:none;background:#222;color:#fff;font-weight:600;}
@@ -20,7 +28,8 @@ input[type=file]{color:#fff;}
 </style>
 </head>
 <body>
-<header>Tattoo Shading Pro – Greywash Extended</header>
+
+<header>Tattoo Shading Pro – Pro Greywash</header>
 
 <main>
 <input type="file" accept="image/*" id="upload">
@@ -29,6 +38,7 @@ input[type=file]{color:#fff;}
 <div class="controls">
 <button onclick="generateShading()">Generate Shading</button>
 <button onclick="resetCanvas()">Reset</button>
+<button onclick="exportPDF()">Export PDF</button>
 </div>
 
 <div class="progress-container">
@@ -38,7 +48,11 @@ input[type=file]{color:#fff;}
 <div class="guide" id="guide"></div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
+// =======================
+// Globals
+// =======================
 const canvas=document.getElementById("canvas");
 const ctx=canvas.getContext("2d");
 const progressBar=document.getElementById("progressBar");
@@ -46,11 +60,12 @@ const guide=document.getElementById("guide");
 
 let baseImage=null;
 let outlineData=null;
-const lightAngle=-Math.PI/3; // lysretning
+const lightAngle=-Math.PI/3; // lysretning (øverste venstre)
 
-// Lag til heavy/medium/light
+// Lagers for shading
 let layers={heavy:null,medium:null,light:null};
 
+// Handle upload
 document.getElementById("upload").addEventListener("change",e=>{
   const file=e.target.files[0];
   if(!file) return;
@@ -63,6 +78,7 @@ document.getElementById("upload").addEventListener("change",e=>{
     baseImage=img;
     outlineData=ctx.getImageData(0,0,canvas.width,canvas.height);
 
+    // Prepare layer canvases
     layers.heavy=document.createElement("canvas");
     layers.medium=document.createElement("canvas");
     layers.light=document.createElement("canvas");
@@ -81,7 +97,7 @@ function resetCanvas(){
   progressBar.style.width="0%";
 }
 
-// Simple edge detection
+// Edge detection (simplified)
 function detectEdges(imgData){
   const w=imgData.width;
   const h=imgData.height;
@@ -89,9 +105,9 @@ function detectEdges(imgData){
   const edges=[];
   for(let y=1;y<h-1;y++){
     for(let x=1;x<w-1;x++){
-      const idx=(y*w+x)*4;
-      const brightness=(data[idx]+data[idx+1]+data[idx+2])/3;
-      if(brightness<128) edges.push({x,y});
+      const i=(y*w + x)*4;
+      const b=(data[i]+data[i+1]+data[i+2])/3;
+      if(b<128) edges.push({x,y});
     }
   }
   return edges;
@@ -108,22 +124,21 @@ function generateShading(){
   function processBatch(){
     for(let b=0;b<batchSize && i<edges.length;i++,b++){
       const {x,y}=edges[i];
-      // Heavy further out
-      drawLayerStroke(x,y,layers.heavy,0,6,0.28,16);
-      drawLayerStroke(x,y,layers.medium,6,12,0.18,12);
-      drawLayerStroke(x,y,layers.light,12,20,0.10,8);
+      drawLayer(x,y,layers.heavy,0,6,0.32,16);
+      drawLayer(x,y,layers.medium,6,12,0.22,12);
+      drawLayer(x,y,layers.light,12,22,0.14,8);
     }
-    // Statusbar
-    const percent=((i/edges.length)*100).toFixed(1);
-    progressBar.style.width=percent+"%";
-    progressBar.textContent=percent+"%";
+    const pct=((i/edges.length)*100).toFixed(1)+"%";
+    progressBar.style.width=pct;
+    progressBar.textContent=pct;
     if(i<edges.length) requestAnimationFrame(processBatch);
-    else drawCombined();
+    else combineLayers();
   }
+  progressBar.textContent="";
   requestAnimationFrame(processBatch);
 }
 
-function drawLayerStroke(x,y,layer,offsetMin,offsetMax,alpha,length){
+function drawLayer(x,y,layer,offsetMin,offsetMax,alpha,length){
   const sctx=layer.getContext("2d");
   sctx.save();
   sctx.lineCap="round";
@@ -131,25 +146,25 @@ function drawLayerStroke(x,y,layer,offsetMin,offsetMax,alpha,length){
   const dx=Math.cos(lightAngle);
   const dy=Math.sin(lightAngle);
   const offset=offsetMin + Math.random()*(offsetMax-offsetMin);
-  const targetX=x-dx*offset;
-  const targetY=y-dy*offset;
-  const angle=lightAngle+Math.PI/2+(Math.random()-0.5)*0.35;
+  const tx=x - dx*offset;
+  const ty=y - dy*offset;
 
-  const grad=sctx.createLinearGradient(x,y,targetX+Math.cos(angle)*length,targetY+Math.sin(angle)*length);
+  const angle=lightAngle + Math.PI/2 + (Math.random()-0.5)*0.35;
+
+  const grad=sctx.createLinearGradient(x,y,tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
   grad.addColorStop(0,`rgba(0,0,0,${alpha})`);
   grad.addColorStop(1,"rgba(0,0,0,0)");
 
   sctx.strokeStyle=grad;
-  sctx.lineWidth=1+Math.random()*0.5;
+  sctx.lineWidth=1 + Math.random()*0.7;
   sctx.beginPath();
   sctx.moveTo(x,y);
-  sctx.lineTo(targetX+Math.cos(angle)*length,targetY+Math.sin(angle)*length);
+  sctx.lineTo(tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
   sctx.stroke();
   sctx.restore();
 }
 
-// Combine layers + outline
-function drawCombined(){
+function combineLayers(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(baseImage,0,0);
   ctx.drawImage(layers.heavy,0,0);
@@ -158,24 +173,33 @@ function drawCombined(){
   drawGuide();
 }
 
-// Auto-guide
+function exportPDF(){
+  const { jsPDF }=window.jspdf;
+  const pdf=new jsPDF({orientation:"portrait",unit:"px",format:[canvas.width,canvas.height]});
+  pdf.addImage(baseImage.src,"PNG",0,0,canvas.width,canvas.height);
+  pdf.addImage(layers.heavy.toDataURL(),"PNG",0,0,canvas.width,canvas.height);
+  pdf.addImage(layers.medium.toDataURL(),"PNG",0,0,canvas.width,canvas.height);
+  pdf.addImage(layers.light.toDataURL(),"PNG",0,0,canvas.width,canvas.height);
+  pdf.save("tattoo_layers.pdf");
+}
+
 function drawGuide(){
   guide.innerHTML=`
 <b>Auto Tattoo Guide – Poseidon Lucius</b><br><br>
-<b>Heavy shadow zone</b><br>
-Needle: 11–13RM<br>
-Greywash: 1:3 – 1:4<br>
-Voltage: 8.8–9.2V<br><br>
-<b>Medium shadow zone</b><br>
-Needle: 15–17M<br>
-Greywash: 1:6 – 1:8<br>
-Voltage: 7.5–8.0V<br><br>
-<b>Light fade / whip</b><br>
-Needle: 17–23CM<br>
-Greywash: 1:10 – 1:12<br>
-Voltage: 6.8–7.2V<br>
+<b>Heavy shadows:</b><br>
+11–13RM · Greywash 1:3–1:4 · 8.8–9.2V<br><br>
+<b>Medium tones:</b><br>
+15–17M · Greywash 1:6–1:8 · 7.5–8.0V<br><br>
+<b>Light fade / whip:</b><br>
+17–23CM · Greywash 1:10–1:12 · 6.8–7.2V
 `;
 }
+
+// PWA auto-update
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js");
+}
 </script>
+
 </body>
 </html>
