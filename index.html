@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Zone-Based</title>
+<title>Tattoo Shading Pro – Line-Aware</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#111111">
@@ -54,6 +54,22 @@ button{
 }
 button:active{ background:#444; }
 input[type=file]{ color:#fff; }
+
+.progress-container{
+  max-width:900px;
+  margin:auto;
+  background:#222;
+  border-radius:8px;
+  overflow:hidden;
+  height:18px;
+}
+.progress-bar{
+  height:100%;
+  width:0%;
+  background:#4caf50;
+  transition: width 0.1s linear;
+}
+
 .guide{
   max-width:900px;
   margin:auto;
@@ -62,12 +78,13 @@ input[type=file]{ color:#fff; }
   border-radius:8px;
   font-size:14px;
   line-height:1.5;
+  margin-top:8px;
 }
 </style>
 </head>
 
 <body>
-<header>Tattoo Shading Pro – Zone-Based</header>
+<header>Tattoo Shading Pro – Line-Aware</header>
 
 <main>
   <input type="file" accept="image/*" id="upload">
@@ -78,6 +95,10 @@ input[type=file]{ color:#fff; }
     <button onclick="resetCanvas()">Reset</button>
   </div>
 
+  <div class="progress-container">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
   <div class="guide" id="guide"></div>
 </main>
 
@@ -85,9 +106,13 @@ input[type=file]{ color:#fff; }
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const guide = document.getElementById("guide");
+const progressBar = document.getElementById("progressBar");
 
 let baseImage = null;
 let outlineData = null;
+
+// Lyskilde vinkel (fra øverste venstre)
+const lightAngle = -Math.PI/3;
 
 // Upload stencil
 document.getElementById("upload").addEventListener("change", e=>{
@@ -109,73 +134,94 @@ function resetCanvas(){
   if(!baseImage) return;
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(baseImage,0,0);
+  progressBar.style.width="0%";
 }
 
 // ============================
-// Zone-based shading
+// Edge detection (simple threshold)
+// ============================
+function detectEdges(imgData){
+  const width = imgData.width;
+  const height = imgData.height;
+  const data = imgData.data;
+  const edges = new Uint8ClampedArray(width*height);
+
+  for(let y=1;y<height-1;y++){
+    for(let x=1;x<width-1;x++){
+      const idx = (y*width+x)*4;
+      const brightness = (data[idx]+data[idx+1]+data[idx+2])/3;
+      // Threshold simple edge detection
+      if(brightness<128) edges[y*width+x] = 1; 
+    }
+  }
+  return {edges,width,height};
+}
+
+// ============================
+// Line-aware shading
 // ============================
 function generateShading(){
   if(!outlineData) return;
   ctx.putImageData(outlineData,0,0);
 
-  // Distance map approximation
-  const width = canvas.width;
-  const height = canvas.height;
-  const data = outlineData.data;
+  const {edges,width,height} = detectEdges(outlineData);
 
-  // Iterate through pixels
-  for(let y=0; y<height; y++){
-    for(let x=0; x<width; x++){
-      const idx = (y*width + x)*4;
-      const r = data[idx], g = data[idx+1], b = data[idx+2];
-      const brightness = (r+g+b)/3;
+  let y=0;
+  const batchSize=10;
 
-      if(brightness>200) continue; // skip background
-
-      // Approximate distance from outline using local darkness
-      // closer to dark = heavy, medium, light
-      let zone = "light";
-      if(brightness<50) zone="heavy";
-      else if(brightness<120) zone="medium";
-
-      drawStroke(x, y, zone);
+  function processBatch(){
+    for(let i=0;i<batchSize && y<height;y++,i++){
+      for(let x=0;x<width;x++){
+        if(edges[y*width+x]===1){
+          drawLineAwareStroke(x,y,edges,width,height);
+        }
+      }
     }
+    progressBar.style.width=((y/height)*100).toFixed(1)+"%";
+    if(y<height) requestAnimationFrame(processBatch);
+    else drawGuide();
   }
 
-  drawGuide();
+  requestAnimationFrame(processBatch);
 }
 
-// Draw a small stroke at x,y based on zone
-function drawStroke(x,y,zone){
+// Draw stroke along line in relation to light source
+function drawLineAwareStroke(x,y,edges,width,height){
   const sctx = ctx;
   sctx.save();
   sctx.lineCap="round";
 
-  let alpha,length;
-  if(zone==="heavy"){ alpha=0.26; length=12; }
-  else if(zone==="medium"){ alpha=0.18; length=8; }
-  else { alpha=0.12; length=5; }
+  // Heavy / Medium / Light based on distance to light source
+  const dx = Math.cos(lightAngle);
+  const dy = Math.sin(lightAngle);
+  const distance = dx*(x-canvas.width/2)+dy*(y-canvas.height/2);
 
-  const angle = -Math.PI/3 + (Math.random()-0.5)*0.35; // light direction
-  const pendulum = angle + Math.sin(x/10)*0.3;
-  const circleX = Math.cos(y/8)*1.5;
-  const circleY = Math.sin(x/10)*1.5;
+  let alpha,length;
+  if(distance<0){ alpha=0.26; length=12; } // Heavy
+  else if(distance<20){ alpha=0.18; length=8; } // Medium
+  else{ alpha=0.12; length=5; } // Light
+
+  // Stroke direction perpendicular to edge
+  const angle = lightAngle + Math.PI/2 + (Math.random()-0.5)*0.3;
+
+  const circleX = Math.cos(y/8)*1.2;
+  const circleY = Math.sin(x/10)*1.2;
 
   const grad = sctx.createLinearGradient(
     x,y,
-    x+Math.cos(pendulum)*length+circleX,
-    y+Math.sin(pendulum)*length+circleY
+    x+Math.cos(angle)*length+circleX,
+    y+Math.sin(angle)*length+circleY
   );
   grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
   grad.addColorStop(1,"rgba(0,0,0,0)");
 
-  sctx.strokeStyle = grad;
-  sctx.lineWidth = 1 + Math.random();
+  sctx.strokeStyle=grad;
+  sctx.lineWidth = 1+Math.random()*0.5;
   sctx.beginPath();
   sctx.moveTo(x,y);
   sctx.lineTo(
-    x+Math.cos(pendulum)*length+circleX,
-    y+Math.sin(pendulum)*length+circleY
+    x+Math.cos(angle)*length+circleX,
+    y+Math.sin(angle)*length+circleY
   );
   sctx.stroke();
   sctx.restore();
