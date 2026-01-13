@@ -3,9 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Pro Greywash</title>
+<title>Tattoo Shading Pro – Advanced Greywash</title>
 
-<!-- PWA support -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#111111">
 <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
@@ -19,8 +18,8 @@ header{padding:12px;text-align:center;background:#000;font-weight:600;}
 main{display:grid;gap:10px;padding:10px;}
 canvas{width:100%;max-width:900px;margin:auto;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,0.4);}
 .controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
-button{padding:10px 14px;border-radius:8px;border:none;background:#222;color:#fff;font-weight:600;}
-button:active{background:#444;}
+button, select{padding:10px 14px;border-radius:8px;border:none;background:#222;color:#fff;font-weight:600;}
+button:active, select:active{background:#444;}
 input[type=file]{color:#fff;}
 .progress-container{max-width:900px;margin:auto;background:#222;border-radius:8px;overflow:hidden;height:18px;margin-top:8px;}
 .progress-bar{height:100%;width:0%;background:#4caf50;transition:width 0.05s linear;}
@@ -29,10 +28,16 @@ input[type=file]{color:#fff;}
 </head>
 <body>
 
-<header>Tattoo Shading Pro – Pro Greywash</header>
+<header>Tattoo Shading Pro – Advanced Greywash</header>
 
 <main>
 <input type="file" accept="image/*" id="upload">
+<select id="preset">
+  <option value="realism">Realism</option>
+  <option value="illustrative">Illustrative</option>
+  <option value="blackwork">Blackwork</option>
+</select>
+
 <canvas id="canvas"></canvas>
 
 <div class="controls">
@@ -50,22 +55,17 @@ input[type=file]{color:#fff;}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-// =======================
-// Globals
-// =======================
 const canvas=document.getElementById("canvas");
 const ctx=canvas.getContext("2d");
 const progressBar=document.getElementById("progressBar");
 const guide=document.getElementById("guide");
+const presetSelect=document.getElementById("preset");
 
 let baseImage=null;
 let outlineData=null;
-const lightAngle=-Math.PI/3; // lysretning (øverste venstre)
-
-// Lagers for shading
+const lightAngle=-Math.PI/3;
 let layers={heavy:null,medium:null,light:null};
 
-// Handle upload
 document.getElementById("upload").addEventListener("change",e=>{
   const file=e.target.files[0];
   if(!file) return;
@@ -78,7 +78,6 @@ document.getElementById("upload").addEventListener("change",e=>{
     baseImage=img;
     outlineData=ctx.getImageData(0,0,canvas.width,canvas.height);
 
-    // Prepare layer canvases
     layers.heavy=document.createElement("canvas");
     layers.medium=document.createElement("canvas");
     layers.light=document.createElement("canvas");
@@ -97,15 +96,14 @@ function resetCanvas(){
   progressBar.style.width="0%";
 }
 
-// Edge detection (simplified)
+// Edge detection
 function detectEdges(imgData){
-  const w=imgData.width;
-  const h=imgData.height;
+  const w=imgData.width,h=imgData.height;
   const data=imgData.data;
   const edges=[];
   for(let y=1;y<h-1;y++){
     for(let x=1;x<w-1;x++){
-      const i=(y*w + x)*4;
+      const i=(y*w+x)*4;
       const b=(data[i]+data[i+1]+data[i+2])/3;
       if(b<128) edges.push({x,y});
     }
@@ -113,24 +111,31 @@ function detectEdges(imgData){
   return edges;
 }
 
-// Generate shading
+// Shading parameters per preset
+const presets={
+  realism:{heavy:[0,8,0.35,18],medium:[8,16,0.25,14],light:[16,28,0.15,10]},
+  illustrative:{heavy:[0,6,0.4,14],medium:[6,12,0.3,10],light:[12,24,0.18,8]},
+  blackwork:{heavy:[0,4,0.5,12],medium:[4,8,0.3,8],light:[8,16,0.1,6]}
+};
+
 function generateShading(){
   if(!outlineData) return;
   ctx.putImageData(outlineData,0,0);
   const edges=detectEdges(outlineData);
   let i=0;
   const batchSize=2000;
+  const preset=presets[presetSelect.value];
 
   function processBatch(){
     for(let b=0;b<batchSize && i<edges.length;i++,b++){
       const {x,y}=edges[i];
-      drawLayer(x,y,layers.heavy,0,6,0.32,16);
-      drawLayer(x,y,layers.medium,6,12,0.22,12);
-      drawLayer(x,y,layers.light,12,22,0.14,8);
+      drawLayer(x,y,layers.heavy,...preset.heavy);
+      drawLayer(x,y,layers.medium,...preset.medium);
+      drawLayer(x,y,layers.light,...preset.light);
     }
     const pct=((i/edges.length)*100).toFixed(1)+"%";
     progressBar.style.width=pct;
-    progressBar.textContent=pct;
+    progressBar.textContent=pct+"%";
     if(i<edges.length) requestAnimationFrame(processBatch);
     else combineLayers();
   }
@@ -138,13 +143,16 @@ function generateShading(){
   requestAnimationFrame(processBatch);
 }
 
+// Vægtet curvature shading
 function drawLayer(x,y,layer,offsetMin,offsetMax,alpha,length){
   const sctx=layer.getContext("2d");
   sctx.save();
   sctx.lineCap="round";
 
-  const dx=Math.cos(lightAngle);
-  const dy=Math.sin(lightAngle);
+  // Curvature simulation: tilfældig variation for “surface feel”
+  const curvature=Math.random()*0.35 - 0.15; 
+  const dx=Math.cos(lightAngle)*(1+curvature);
+  const dy=Math.sin(lightAngle)*(1+curvature);
   const offset=offsetMin + Math.random()*(offsetMax-offsetMin);
   const tx=x - dx*offset;
   const ty=y - dy*offset;
@@ -156,7 +164,7 @@ function drawLayer(x,y,layer,offsetMin,offsetMax,alpha,length){
   grad.addColorStop(1,"rgba(0,0,0,0)");
 
   sctx.strokeStyle=grad;
-  sctx.lineWidth=1 + Math.random()*0.7;
+  sctx.lineWidth=1+Math.random()*0.8;
   sctx.beginPath();
   sctx.moveTo(x,y);
   sctx.lineTo(tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
@@ -191,11 +199,11 @@ function drawGuide(){
 <b>Medium tones:</b><br>
 15–17M · Greywash 1:6–1:8 · 7.5–8.0V<br><br>
 <b>Light fade / whip:</b><br>
-17–23CM · Greywash 1:10–1:12 · 6.8–7.2V
+17–23CM · Greywash 1:10–1:12 · 6.8–7.2V<br><br>
+<b>Preset style:</b> ${presetSelect.value} · Vægtet curvature shading
 `;
 }
 
-// PWA auto-update
 if("serviceWorker" in navigator){
   navigator.serviceWorker.register("sw.js");
 }
