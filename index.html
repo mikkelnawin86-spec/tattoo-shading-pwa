@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Greywash Whip</title>
+<title>Tattoo Shading Pro – Layered Greywash</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
+<link rel="apple-touch-icon" href="icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#111;color:#fff;}
@@ -20,7 +26,7 @@ input[type=file]{color:#fff;}
 </style>
 </head>
 <body>
-<header>Tattoo Shading Pro – Greywash Whip</header>
+<header>Tattoo Shading Pro – Layered Greywash</header>
 
 <main>
 <input type="file" accept="image/*" id="upload">
@@ -29,6 +35,7 @@ input[type=file]{color:#fff;}
 <div class="controls">
 <button onclick="generateShading()">Generate Shading</button>
 <button onclick="resetCanvas()">Reset</button>
+<button onclick="exportPDF()">Export PDF</button>
 </div>
 
 <div class="progress-container">
@@ -38,6 +45,7 @@ input[type=file]{color:#fff;}
 <div class="guide" id="guide"></div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 const canvas=document.getElementById("canvas");
 const ctx=canvas.getContext("2d");
@@ -46,10 +54,10 @@ const guide=document.getElementById("guide");
 
 let baseImage=null;
 let outlineData=null;
+const lightAngle=-Math.PI/3; // lysretning
+let layers={heavy:null,medium:null,light:null};
 
-// Lysretning øverst venstre
-const lightAngle=-Math.PI/3;
-
+// Upload stencil
 document.getElementById("upload").addEventListener("change",e=>{
   const file=e.target.files[0];
   if(!file) return;
@@ -61,6 +69,15 @@ document.getElementById("upload").addEventListener("change",e=>{
     ctx.drawImage(img,0,0);
     baseImage=img;
     outlineData=ctx.getImageData(0,0,canvas.width,canvas.height);
+
+    // Opret separate layer canvases
+    layers.heavy=document.createElement("canvas");
+    layers.medium=document.createElement("canvas");
+    layers.light=document.createElement("canvas");
+    [layers.heavy,layers.medium,layers.light].forEach(c=>{
+      c.width=canvas.width;
+      c.height=canvas.height;
+    });
   };
   img.src=URL.createObjectURL(file);
 });
@@ -72,7 +89,7 @@ function resetCanvas(){
   progressBar.style.width="0%";
 }
 
-// Edge detection simple
+// Simple edge detection
 function detectEdges(imgData){
   const w=imgData.width;
   const h=imgData.height;
@@ -88,7 +105,7 @@ function detectEdges(imgData){
   return edges;
 }
 
-// Generate Greywash Whip Shading
+// Generate shading layers
 function generateShading(){
   if(!outlineData) return;
   ctx.putImageData(outlineData,0,0);
@@ -99,33 +116,27 @@ function generateShading(){
   function processBatch(){
     for(let b=0;b<batchSize&&i<edges.length;i++,b++){
       const {x,y}=edges[i];
-      drawWhipGreywash(x,y);
+      drawLayerStroke(x,y,layers.heavy,0,4,0.28,12);
+      drawLayerStroke(x,y,layers.medium,4,8,0.18,8);
+      drawLayerStroke(x,y,layers.light,8,12,0.10,5);
     }
     progressBar.style.width=((i/edges.length)*100).toFixed(1)+"%";
     if(i<edges.length) requestAnimationFrame(processBatch);
-    else drawGuide();
+    else drawCombined();
   }
   requestAnimationFrame(processBatch);
 }
 
-function drawWhipGreywash(x,y){
-  const sctx=ctx;
+// Tegn stroke på given layer
+function drawLayerStroke(x,y,layer,offsetMin,offsetMax,alpha,length){
+  const sctx=layer.getContext("2d");
   sctx.save();
   sctx.lineCap="round";
-
-  // Offset fra linje modsat lys
   const dx=Math.cos(lightAngle);
   const dy=Math.sin(lightAngle);
-  const offset=Math.random()*12;
-
+  const offset=offsetMin + Math.random()*(offsetMax-offsetMin);
   const targetX=x-dx*offset;
   const targetY=y-dy*offset;
-
-  let alpha,length;
-  if(offset<4){ alpha=0.28; length=12; } // Heavy
-  else if(offset<8){ alpha=0.18; length=8; } // Medium
-  else{ alpha=0.10; length=5; } // Light
-
   const angle=lightAngle+Math.PI/2+(Math.random()-0.5)*0.35;
 
   const grad=sctx.createLinearGradient(x,y,targetX+Math.cos(angle)*length,targetY+Math.sin(angle)*length);
@@ -139,6 +150,31 @@ function drawWhipGreywash(x,y){
   sctx.lineTo(targetX+Math.cos(angle)*length,targetY+Math.sin(angle)*length);
   sctx.stroke();
   sctx.restore();
+}
+
+// Combine layers + outline
+function drawCombined(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(baseImage,0,0);
+  ctx.drawImage(layers.heavy,0,0);
+  ctx.drawImage(layers.medium,0,0);
+  ctx.drawImage(layers.light,0,0);
+  drawGuide();
+}
+
+// Export PDF med separate lag
+function exportPDF(){
+  const { jsPDF } = window.jspdf;
+  const pdf=new jsPDF({
+    orientation:"portrait",
+    unit:"px",
+    format:[canvas.width,canvas.height]
+  });
+  pdf.addImage(baseImage.src, "PNG", 0,0,canvas.width,canvas.height);
+  pdf.addImage(layers.heavy.toDataURL(), "PNG",0,0,canvas.width,canvas.height);
+  pdf.addImage(layers.medium.toDataURL(), "PNG",0,0,canvas.width,canvas.height);
+  pdf.addImage(layers.light.toDataURL(), "PNG",0,0,canvas.width,canvas.height);
+  pdf.save("tattoo_layers.pdf");
 }
 
 // Auto-guide
