@@ -2,242 +2,182 @@
 <html lang="da">
 <head>
 <meta charset="UTF-8">
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Tattoo Shading Pro</title>
 
-<!-- VIEWPORT / iPAD -->
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<meta name="theme-color" content="#111111">
-
-<!-- iOS PWA -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="Tattoo Shading Pro">
-
-<!-- ICONS (VIGTIGT FOR HJEMMESKÆRM) -->
-<link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
-<link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
-
-<!-- MANIFEST -->
+<!-- PWA -->
 <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <style>
 body{
   margin:0;
+  font-family:-apple-system, BlinkMacSystemFont, sans-serif;
   background:#111;
-  color:#eee;
-  font-family:Arial, Helvetica, sans-serif;
+  color:#fff;
 }
-
 header{
+  padding:12px;
   text-align:center;
-  padding:10px;
-  font-weight:bold;
+  background:#000;
+  font-weight:600;
 }
-
+main{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
+  padding:10px;
+}
+canvas{
+  width:100%;
+  max-width:900px;
+  margin:auto;
+  background:#fff;
+  border-radius:8px;
+}
 .controls{
   display:flex;
   flex-wrap:wrap;
-  gap:10px;
+  gap:8px;
   justify-content:center;
-  padding:10px;
 }
-
-.viewer{
-  display:flex;
-  justify-content:center;
-  padding:10px;
-}
-
-canvas{
-  background:#fff;
-  max-width:100%;
-  max-height:70vh; /* JUSTÉR TIL iPAD */
+button{
+  padding:10px 14px;
   border-radius:8px;
-  box-shadow:0 0 20px rgba(0,0,0,0.4);
+  border:none;
+  background:#222;
+  color:#fff;
+  font-weight:600;
 }
-
-.progress{
-  height:14px;
-  background:#333;
-  margin:10px;
-  border-radius:7px;
-  overflow:hidden;
-}
-
-.progress div{
-  height:100%;
-  width:0%;
-  background:linear-gradient(90deg,#666,#eee);
-  font-size:10px;
-  color:#000;
-  text-align:center;
-}
-
-.guide{
-  padding:12px;
-  max-width:900px;
-  margin:auto;
-  font-size:14px;
-  line-height:1.5;
-}
+button:active{ background:#444; }
+input[type=file]{ color:#fff; }
 </style>
 </head>
 
 <body>
+<header>Tattoo Shading Pro – Black & Grey</header>
 
-<header>🖤 Tattoo Shading Pro – Studio Engine</header>
-
-<div class="controls">
-  <input type="file" id="upload">
-  <select id="style">
-    <option value="luxury">Luxury realism</option>
-    <option value="dirty">Dirty illustrative</option>
-  </select>
-  <button onclick="generateShading()">Generate shading</button>
-</div>
-
-<div class="progress"><div id="bar">0%</div></div>
-
-<div class="viewer">
+<main>
+  <input type="file" accept="image/*" id="upload">
   <canvas id="canvas"></canvas>
-</div>
 
-<div class="guide" id="guide"></div>
+  <div class="controls">
+    <button onclick="generateShading('light')">Light</button>
+    <button onclick="generateShading('medium')">Medium</button>
+    <button onclick="generateShading('heavy')">Heavy</button>
+    <button onclick="resetCanvas()">Reset</button>
+  </div>
+</main>
 
 <script>
-/* ===============================
-   SERVICE WORKER AUTO-UPDATE
-================================ */
-if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("sw.js");
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    window.location.reload();
-  });
-}
-
-/* ===============================
-   CORE VARIABLES
-================================ */
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const bar = document.getElementById("bar");
-const guide = document.getElementById("guide");
 
-let outlineImage = null;
-let shadingCanvas = null;
+let baseImage = null;
+let outlineImageData = null;
 
-/* ===============================
-   UPLOAD STENCIL
-================================ */
-document.getElementById("upload").onchange = e => {
+const lightAngle = -Math.PI / 3; // ÉN fast lyskilde (top-left)
+
+// Upload
+document.getElementById("upload").addEventListener("change", e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+
   const img = new Image();
-  img.onload = () => {
+  img.onload = ()=>{
     canvas.width = img.width;
     canvas.height = img.height;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(img,0,0);
-    outlineImage = ctx.getImageData(0,0,canvas.width,canvas.height);
+    baseImage = img;
+    outlineImageData = ctx.getImageData(0,0,canvas.width,canvas.height);
   };
-  img.src = URL.createObjectURL(e.target.files[0]);
-};
+  img.src = URL.createObjectURL(file);
+});
 
-/* ===============================
-   SHADING ENGINE (STROKE BASED)
-================================ */
-function generateShading(){
-  if(!outlineImage) return;
+// Reset
+function resetCanvas(){
+  if(!baseImage) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(baseImage,0,0);
+}
 
-  shadingCanvas = document.createElement("canvas");
-  shadingCanvas.width = canvas.width;
-  shadingCanvas.height = canvas.height;
-  const sctx = shadingCanvas.getContext("2d");
+// SHADING ENGINE (PRO)
+function generateShading(level){
+  if(!outlineImageData) return;
 
-  const style = document.getElementById("style").value;
+  const sctx = ctx;
+  const data = outlineImageData.data;
 
-  const totalStrokes = style === "dirty" ? 9500 : 7000;
-  const maxLength   = style === "dirty" ? 48 : 32;
-  const baseAlpha   = style === "dirty" ? 0.065 : 0.045;
-  const lightAngle  = -Math.PI/3; // ÉN lyskilde
+  let density, alpha, length;
 
-  let i = 0;
+  if(level === "light"){
+    density = 6;
+    alpha = 0.12;
+    length = 25;
+  } else if(level === "medium"){
+    density = 4;
+    alpha = 0.18;
+    length = 40;
+  } else {
+    density = 3;
+    alpha = 0.26;
+    length = 55;
+  }
 
-  function drawBatch(){
-    for(let n=0;n<140 && i<totalStrokes;n++,i++){
-      const x = Math.random() * canvas.width;
-      const y = Math.random() * canvas.height;
-      const idx = ((y|0)*canvas.width + (x|0)) * 4;
+  sctx.save();
+  sctx.lineCap = "round";
 
-      // Kun skygge nær outline
-      if(outlineImage.data[idx] < 80){
-        const len = maxLength * (0.4 + Math.random());
-        const angle = lightAngle + (Math.random()-0.5)*0.4;
+  for(let y=0; y<canvas.height; y+=density){
+    for(let x=0; x<canvas.width; x+=density){
 
-        const grad = sctx.createLinearGradient(
-          x, y,
-          x + Math.cos(angle)*len,
-          y + Math.sin(angle)*len
-        );
+      const idx = (y * canvas.width + x) * 4;
+      const r = data[idx];
+      const g = data[idx+1];
+      const b = data[idx+2];
 
-        grad.addColorStop(0, `rgba(0,0,0,${baseAlpha})`);
-        grad.addColorStop(1, "rgba(0,0,0,0)");
+      // KORREKT OUTLINE DETEKTION
+      const brightness = (r + g + b) / 3;
+      if(brightness > 200) continue;
 
-        sctx.strokeStyle = grad;
-        sctx.lineWidth = 1 + Math.random()*2;
-        sctx.beginPath();
-        sctx.moveTo(x,y);
-        sctx.lineTo(
-          x + Math.cos(angle)*len,
-          y + Math.sin(angle)*len
-        );
-        sctx.stroke();
-      }
-    }
+      // Dirty hand randomness
+      if(Math.random() > 0.55) continue;
 
-    bar.style.width = Math.round(i/totalStrokes*100) + "%";
-    bar.innerText  = Math.round(i/totalStrokes*100) + "%";
+      const len = length * (0.5 + Math.random());
+      const angle = lightAngle + (Math.random()-0.5)*0.35;
 
-    // Tegn ALDRIG oven på outline
-    ctx.putImageData(outlineImage,0,0);
-    ctx.drawImage(shadingCanvas,0,0);
+      const grad = sctx.createLinearGradient(
+        x, y,
+        x + Math.cos(angle)*len,
+        y + Math.sin(angle)*len
+      );
 
-    if(i < totalStrokes){
-      requestAnimationFrame(drawBatch);
-    }else{
-      finishGuide();
+      grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+
+      sctx.strokeStyle = grad;
+      sctx.lineWidth = 1 + Math.random()*2;
+
+      sctx.beginPath();
+      sctx.moveTo(x,y);
+      sctx.lineTo(
+        x + Math.cos(angle)*len,
+        y + Math.sin(angle)*len
+      );
+      sctx.stroke();
     }
   }
 
-  drawBatch();
+  sctx.restore();
 }
 
-/* ===============================
-   AUTO NEEDLE / GREYWASH GUIDE
-================================ */
-function finishGuide(){
-  bar.innerText = "Ready";
-
-  guide.innerHTML = `
-<b>Auto Tattoo Guide – Poseidon Lucius</b><br><br>
-
-<b>Heavy shadow zones</b><br>
-• Needle: 11–13RM<br>
-• Greywash: 1:3 – 1:4<br>
-• Voltage: 8.8 – 9.2V<br><br>
-
-<b>Medium blend zones</b><br>
-• Needle: 15–17M<br>
-• Greywash: 1:6 – 1:8<br>
-• Voltage: 7.5 – 8.0V<br><br>
-
-<b>Light whip / fade</b><br>
-• Needle: 17–23CM<br>
-• Greywash: 1:10 – 1:12<br>
-• Voltage: 6.8 – 7.2V<br><br>
-
-<b>Style:</b> ${document.getElementById("style").value}
-`;
+// Service worker (PWA)
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js");
 }
 </script>
-
 </body>
 </html>
