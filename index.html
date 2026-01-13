@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Dynamic Pendulum</title>
+<title>Tattoo Shading Pro – Multi-Layer Greywash</title>
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
@@ -68,16 +68,14 @@ input[type=file]{ color:#fff; }
 </head>
 
 <body>
-<header>Tattoo Shading Pro – Dynamic Pendulum</header>
+<header>Tattoo Shading Pro – Multi-Layer Greywash</header>
 
 <main>
   <input type="file" accept="image/*" id="upload">
   <canvas id="canvas"></canvas>
 
   <div class="controls">
-    <button onclick="generateShading('light')">Light</button>
-    <button onclick="generateShading('medium')">Medium</button>
-    <button onclick="generateShading('heavy')">Heavy</button>
+    <button onclick="generateShading()">Generate Shading</button>
     <button onclick="resetCanvas()">Reset</button>
   </div>
 
@@ -91,8 +89,9 @@ const guide = document.getElementById("guide");
 
 let baseImage = null;
 let outlineData = null;
-const lightAngle = -Math.PI/3; // fast lyskilde (top-left)
+const lightAngle = -Math.PI/3; // fast lyskilde
 
+// Upload stencil
 document.getElementById("upload").addEventListener("change", e=>{
   const file = e.target.files[0];
   if(!file) return;
@@ -114,90 +113,101 @@ function resetCanvas(){
   ctx.drawImage(baseImage,0,0);
 }
 
-// SHADING ENGINE – Dynamic Pendulum + Whip
-function generateShading(level){
+// ============================
+// Shading engine – multi-layer
+// ============================
+function generateShading(){
   if(!outlineData) return;
 
+  ctx.putImageData(outlineData,0,0); // Always preserve outline
+
+  const layers = [
+    {name:"heavy", density:3, alpha:0.26, length:55},
+    {name:"medium", density:4, alpha:0.18, length:40},
+    {name:"light", density:6, alpha:0.12, length:25}
+  ];
+
+  layers.forEach(layer=>{
+    drawLayer(layer);
+  });
+
+  drawGuide();
+}
+
+function drawLayer(layer){
   const data = outlineData.data;
-  ctx.putImageData(outlineData,0,0); // altid start med outline
+  ctx.save();
+  ctx.lineCap = "round";
 
-  const sctx = ctx;
-  sctx.save();
-  sctx.lineCap = "round";
-
-  let density, alpha, length;
-  if(level==="light"){ density=6; alpha=0.12; length=25;}
-  else if(level==="medium"){ density=4; alpha=0.18; length=40;}
-  else { density=3; alpha=0.26; length=55;}
-
-  // Loop gennem pixels
-  for(let y=0; y<canvas.height; y+=density){
-    for(let x=0; x<canvas.width; x+=density){
+  for(let y=0;y<canvas.height;y+=layer.density){
+    for(let x=0;x<canvas.width;x+=layer.density){
       const idx = (y*canvas.width + x)*4;
-      const r=data[idx], g=data[idx+1], b=data[idx+2];
+      const r = data[idx], g = data[idx+1], b = data[idx+2];
       const brightness = (r+g+b)/3;
 
-      if(brightness>200) continue; // kun near outline
-      if(Math.random()>0.55) continue; // dirty hand randomness
+      if(brightness>200) continue; // only near outline
+      if(Math.random()>0.55) continue; // hand feel randomness
 
-      const len = length*(0.5+Math.random());
+      // stroke parameters
+      const len = layer.length*(0.5+Math.random());
       const whipAngle = lightAngle + (Math.random()-0.5)*0.35;
-      const pendulumAngle = whipAngle + Math.sin(x/15)*0.3; // pendulum motion
+      const pendulumAngle = whipAngle + Math.sin(x/15)*0.3;
       const circleOffsetX = Math.cos(y/10)*2;
       const circleOffsetY = Math.sin(x/12)*2;
 
-      const grad = sctx.createLinearGradient(
-        x, y,
-        x + Math.cos(pendulumAngle)*len + circleOffsetX,
-        y + Math.sin(pendulumAngle)*len + circleOffsetY
+      const grad = ctx.createLinearGradient(
+        x,y,
+        x+Math.cos(pendulumAngle)*len + circleOffsetX,
+        y+Math.sin(pendulumAngle)*len + circleOffsetY
       );
-      grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
-      grad.addColorStop(1, "rgba(0,0,0,0)");
+      grad.addColorStop(0, `rgba(0,0,0,${layer.alpha})`);
+      grad.addColorStop(1,"rgba(0,0,0,0)");
 
-      sctx.strokeStyle = grad;
-      sctx.lineWidth = 1 + Math.random()*2;
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1 + Math.random()*2;
 
-      sctx.beginPath();
-      sctx.moveTo(x,y);
-      sctx.lineTo(
-        x + Math.cos(pendulumAngle)*len + circleOffsetX,
-        y + Math.sin(pendulumAngle)*len + circleOffsetY
+      ctx.beginPath();
+      ctx.moveTo(x,y);
+      ctx.lineTo(
+        x+Math.cos(pendulumAngle)*len + circleOffsetX,
+        y+Math.sin(pendulumAngle)*len + circleOffsetY
       );
-      sctx.stroke();
+      ctx.stroke();
     }
   }
 
-  sctx.restore();
-  drawGuide(level);
+  ctx.restore();
 }
 
-// AUTO GUIDE – nåle + greywash
-function drawGuide(level){
-  let text = "<b>Auto Tattoo Guide – Poseidon Lucius</b><br><br>";
-  if(level==="heavy"){
-    text+=`<b>Heavy shadow zone</b><br>
-      Needle: 11–13RM<br>
-      Greywash: 1:3 – 1:4<br>
-      Voltage: 8.8 – 9.2V<br>`;
-  } else if(level==="medium"){
-    text+=`<b>Medium shadow zone</b><br>
-      Needle: 15–17M<br>
-      Greywash: 1:6 – 1:8<br>
-      Voltage: 7.5 – 8.0V<br>`;
-  } else {
-    text+=`<b>Light fade / whip</b><br>
-      Needle: 17–23CM<br>
-      Greywash: 1:10 – 1:12<br>
-      Voltage: 6.8 – 7.2V<br>`;
-  }
-  guide.innerHTML = text;
+// ============================
+// Auto guide – Needle + Greywash
+// ============================
+function drawGuide(){
+  guide.innerHTML = `
+<b>Auto Tattoo Guide – Poseidon Lucius</b><br><br>
+<b>Heavy shadow zone</b><br>
+Needle: 11–13RM<br>
+Greywash: 1:3 – 1:4<br>
+Voltage: 8.8–9.2V<br><br>
+
+<b>Medium shadow zone</b><br>
+Needle: 15–17M<br>
+Greywash: 1:6 – 1:8<br>
+Voltage: 7.5–8.0V<br><br>
+
+<b>Light fade / whip</b><br>
+Needle: 17–23CM<br>
+Greywash: 1:10 – 1:12<br>
+Voltage: 6.8–7.2V<br>
+`;
 }
 
-// SERVICE WORKER (PWA AUTO-UPDATE)
+// ============================
+// PWA Service Worker
+// ============================
 if("serviceWorker" in navigator){
   navigator.serviceWorker.register("sw.js");
 }
 </script>
-
 </body>
 </html>
