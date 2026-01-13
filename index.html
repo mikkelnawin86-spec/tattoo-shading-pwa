@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Artistic Illustrative</title>
+<title>Tattoo Shading Pro – High Quality Illustrative</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#111111">
@@ -29,7 +29,7 @@ input[type=file]{color:#fff;}
 </head>
 <body>
 
-<header>Tattoo Shading Pro – Artistic / Illustrative</header>
+<header>Tattoo Shading Pro – High Quality Illustrative</header>
 
 <main>
 <input type="file" accept="image/*" id="upload">
@@ -46,8 +46,8 @@ input[type=file]{color:#fff;}
 <input type="range" id="mediumSlider" min="0.05" max="0.5" step="0.01" value="0.25">
 <label>Light intensity <span id="lightVal">0.15</span></label>
 <input type="range" id="lightSlider" min="0.02" max="0.3" step="0.01" value="0.15">
-<label>Spread distance <span id="spreadVal">20</span>px</label>
-<input type="range" id="spreadSlider" min="5" max="50" step="1" value="20">
+<label>Spread distance <span id="spreadVal">30</span>px</label>
+<input type="range" id="spreadSlider" min="5" max="60" step="1" value="30">
 </div>
 
 <canvas id="canvas"></canvas>
@@ -144,7 +144,7 @@ function generateShading(){
   ctx.putImageData(outlineData,0,0);
   const edges=detectEdges(outlineData);
   let i=0;
-  const batchSize=2000;
+  const batchSize=1500; // mindre for bedre kvalitet
 
   const heavyIntensity=parseFloat(heavySlider.value);
   const mediumIntensity=parseFloat(mediumSlider.value);
@@ -154,10 +154,10 @@ function generateShading(){
   function processBatch(){
     for(let b=0;b<batchSize && i<edges.length;i++,b++){
       const {x,y}=edges[i];
-      // Artistic layering: packing / whip / pendulum simulation
-      drawLayer(x,y,layers.heavy,0,spread,heavyIntensity,18,true);
-      drawLayer(x,y,layers.medium,spread/3,spread*0.7,mediumIntensity,14,true);
-      drawLayer(x,y,layers.light,spread*0.6,spread,lightIntensity,10,true);
+      // High-quality Artistic layering
+      drawLayer(x,y,layers.heavy,0,spread,heavyIntensity,22,true);
+      drawLayer(x,y,layers.medium,spread/2,spread*0.8,mediumIntensity,18,true);
+      drawLayer(x,y,layers.light,spread*0.6,spread,lightIntensity,14,true);
     }
     const pct=((i/edges.length)*100).toFixed(1)+"%";
     progressBar.style.width=pct+"%";
@@ -186,15 +186,18 @@ function drawLayer(x,y,layer,offsetMin,offsetMax,alpha,length,artistic){
 
   // Artistic: vary angle for whip / pendulum effect
   if(artistic){
-    angle += (Math.random()-0.5)*0.6;
+    angle += (Math.random()-0.5)*0.7;
   }
 
   const grad=sctx.createLinearGradient(x,y,tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
+  // Gradient with clear greywash distinction
   grad.addColorStop(0,`rgba(0,0,0,${alpha})`);
+  grad.addColorStop(0.3,`rgba(0,0,0,${alpha*0.6})`);
+  grad.addColorStop(0.6,`rgba(0,0,0,${alpha*0.3})`);
   grad.addColorStop(1,"rgba(0,0,0,0)");
 
   sctx.strokeStyle=grad;
-  sctx.lineWidth=1+Math.random()*0.8;
+  sctx.lineWidth=1+Math.random()*1.2;
   sctx.beginPath();
   sctx.moveTo(x,y);
   sctx.lineTo(tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
