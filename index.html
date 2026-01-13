@@ -3,9 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Multi-Layer Greywash</title>
+<title>Tattoo Shading Pro – Zone-Based</title>
 
-<!-- PWA -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#111111">
 <link rel="apple-touch-icon" href="icon-512.png">
@@ -68,7 +67,7 @@ input[type=file]{ color:#fff; }
 </head>
 
 <body>
-<header>Tattoo Shading Pro – Multi-Layer Greywash</header>
+<header>Tattoo Shading Pro – Zone-Based</header>
 
 <main>
   <input type="file" accept="image/*" id="upload">
@@ -89,7 +88,6 @@ const guide = document.getElementById("guide");
 
 let baseImage = null;
 let outlineData = null;
-const lightAngle = -Math.PI/3; // fast lyskilde
 
 // Upload stencil
 document.getElementById("upload").addEventListener("change", e=>{
@@ -114,69 +112,73 @@ function resetCanvas(){
 }
 
 // ============================
-// Shading engine – multi-layer
+// Zone-based shading
 // ============================
 function generateShading(){
   if(!outlineData) return;
+  ctx.putImageData(outlineData,0,0);
 
-  ctx.putImageData(outlineData,0,0); // Always preserve outline
+  // Distance map approximation
+  const width = canvas.width;
+  const height = canvas.height;
+  const data = outlineData.data;
 
-  const layers = [
-    {name:"heavy", density:3, alpha:0.26, length:55},
-    {name:"medium", density:4, alpha:0.18, length:40},
-    {name:"light", density:6, alpha:0.12, length:25}
-  ];
+  // Iterate through pixels
+  for(let y=0; y<height; y++){
+    for(let x=0; x<width; x++){
+      const idx = (y*width + x)*4;
+      const r = data[idx], g = data[idx+1], b = data[idx+2];
+      const brightness = (r+g+b)/3;
 
-  layers.forEach(layer=>{
-    drawLayer(layer);
-  });
+      if(brightness>200) continue; // skip background
+
+      // Approximate distance from outline using local darkness
+      // closer to dark = heavy, medium, light
+      let zone = "light";
+      if(brightness<50) zone="heavy";
+      else if(brightness<120) zone="medium";
+
+      drawStroke(x, y, zone);
+    }
+  }
 
   drawGuide();
 }
 
-function drawLayer(layer){
-  const data = outlineData.data;
-  ctx.save();
-  ctx.lineCap = "round";
+// Draw a small stroke at x,y based on zone
+function drawStroke(x,y,zone){
+  const sctx = ctx;
+  sctx.save();
+  sctx.lineCap="round";
 
-  for(let y=0;y<canvas.height;y+=layer.density){
-    for(let x=0;x<canvas.width;x+=layer.density){
-      const idx = (y*canvas.width + x)*4;
-      const r = data[idx], g = data[idx+1], b = data[idx+2];
-      const brightness = (r+g+b)/3;
+  let alpha,length;
+  if(zone==="heavy"){ alpha=0.26; length=12; }
+  else if(zone==="medium"){ alpha=0.18; length=8; }
+  else { alpha=0.12; length=5; }
 
-      if(brightness>200) continue; // only near outline
-      if(Math.random()>0.55) continue; // hand feel randomness
+  const angle = -Math.PI/3 + (Math.random()-0.5)*0.35; // light direction
+  const pendulum = angle + Math.sin(x/10)*0.3;
+  const circleX = Math.cos(y/8)*1.5;
+  const circleY = Math.sin(x/10)*1.5;
 
-      // stroke parameters
-      const len = layer.length*(0.5+Math.random());
-      const whipAngle = lightAngle + (Math.random()-0.5)*0.35;
-      const pendulumAngle = whipAngle + Math.sin(x/15)*0.3;
-      const circleOffsetX = Math.cos(y/10)*2;
-      const circleOffsetY = Math.sin(x/12)*2;
+  const grad = sctx.createLinearGradient(
+    x,y,
+    x+Math.cos(pendulum)*length+circleX,
+    y+Math.sin(pendulum)*length+circleY
+  );
+  grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
+  grad.addColorStop(1,"rgba(0,0,0,0)");
 
-      const grad = ctx.createLinearGradient(
-        x,y,
-        x+Math.cos(pendulumAngle)*len + circleOffsetX,
-        y+Math.sin(pendulumAngle)*len + circleOffsetY
-      );
-      grad.addColorStop(0, `rgba(0,0,0,${layer.alpha})`);
-      grad.addColorStop(1,"rgba(0,0,0,0)");
-
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 1 + Math.random()*2;
-
-      ctx.beginPath();
-      ctx.moveTo(x,y);
-      ctx.lineTo(
-        x+Math.cos(pendulumAngle)*len + circleOffsetX,
-        y+Math.sin(pendulumAngle)*len + circleOffsetY
-      );
-      ctx.stroke();
-    }
-  }
-
-  ctx.restore();
+  sctx.strokeStyle = grad;
+  sctx.lineWidth = 1 + Math.random();
+  sctx.beginPath();
+  sctx.moveTo(x,y);
+  sctx.lineTo(
+    x+Math.cos(pendulum)*length+circleX,
+    y+Math.sin(pendulum)*length+circleY
+  );
+  sctx.stroke();
+  sctx.restore();
 }
 
 // ============================
