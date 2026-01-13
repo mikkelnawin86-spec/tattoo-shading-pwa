@@ -3,131 +3,66 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Ultimate</title>
-
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#111111">
-<link rel="apple-touch-icon" href="icon-512.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Tattoo Shading Pro – Greywash Whip</title>
 
 <style>
-body{
-  margin:0;
-  font-family:-apple-system, BlinkMacSystemFont, sans-serif;
-  background:#111;
-  color:#fff;
-}
-header{
-  padding:12px;
-  text-align:center;
-  background:#000;
-  font-weight:600;
-}
-main{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:10px;
-  padding:10px;
-}
-canvas{
-  width:100%;
-  max-width:900px;
-  margin:auto;
-  background:#fff;
-  border-radius:8px;
-  box-shadow:0 0 20px rgba(0,0,0,0.4);
-}
-.controls{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  justify-content:center;
-}
-button{
-  padding:10px 14px;
-  border-radius:8px;
-  border:none;
-  background:#222;
-  color:#fff;
-  font-weight:600;
-}
-button:active{ background:#444; }
-input[type=file]{ color:#fff; }
-
-.progress-container{
-  max-width:900px;
-  margin:auto;
-  background:#222;
-  border-radius:8px;
-  overflow:hidden;
-  height:18px;
-}
-.progress-bar{
-  height:100%;
-  width:0%;
-  background:#4caf50;
-  transition: width 0.1s linear;
-}
-
-.guide{
-  max-width:900px;
-  margin:auto;
-  background:#222;
-  padding:12px;
-  border-radius:8px;
-  font-size:14px;
-  line-height:1.5;
-  margin-top:8px;
-}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#111;color:#fff;}
+header{padding:12px;text-align:center;background:#000;font-weight:600;}
+main{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;}
+canvas{width:100%;max-width:900px;margin:auto;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,0.4);}
+.controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
+button{padding:10px 14px;border-radius:8px;border:none;background:#222;color:#fff;font-weight:600;}
+button:active{background:#444;}
+input[type=file]{color:#fff;}
+.progress-container{max-width:900px;margin:auto;background:#222;border-radius:8px;overflow:hidden;height:18px;}
+.progress-bar{height:100%;width:0%;background:#4caf50;transition:width 0.1s linear;}
+.guide{max-width:900px;margin:auto;background:#222;padding:12px;border-radius:8px;font-size:14px;line-height:1.5;margin-top:8px;}
 </style>
 </head>
-
 <body>
-<header>Tattoo Shading Pro – Ultimate</header>
+<header>Tattoo Shading Pro – Greywash Whip</header>
 
 <main>
-  <input type="file" accept="image/*" id="upload">
-  <canvas id="canvas"></canvas>
+<input type="file" accept="image/*" id="upload">
+<canvas id="canvas"></canvas>
 
-  <div class="controls">
-    <button onclick="generateShading()">Generate Shading</button>
-    <button onclick="resetCanvas()">Reset</button>
-  </div>
+<div class="controls">
+<button onclick="generateShading()">Generate Shading</button>
+<button onclick="resetCanvas()">Reset</button>
+</div>
 
-  <div class="progress-container">
-    <div class="progress-bar" id="progressBar"></div>
-  </div>
+<div class="progress-container">
+<div class="progress-bar" id="progressBar"></div>
+</div>
 
-  <div class="guide" id="guide"></div>
+<div class="guide" id="guide"></div>
 </main>
 
 <script>
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const guide = document.getElementById("guide");
-const progressBar = document.getElementById("progressBar");
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const progressBar=document.getElementById("progressBar");
+const guide=document.getElementById("guide");
 
-let baseImage = null;
-let outlineData = null;
+let baseImage=null;
+let outlineData=null;
 
-// Lyskilde vinkel (fra øverste venstre)
-const lightAngle = -Math.PI/3;
+// Lysretning øverst venstre
+const lightAngle=-Math.PI/3;
 
-// Upload stencil
-document.getElementById("upload").addEventListener("change", e=>{
-  const file = e.target.files[0];
+document.getElementById("upload").addEventListener("change",e=>{
+  const file=e.target.files[0];
   if(!file) return;
-  const img = new Image();
-  img.onload = ()=>{
-    canvas.width = img.width;
-    canvas.height = img.height;
+  const img=new Image();
+  img.onload=()=>{
+    canvas.width=img.width;
+    canvas.height=img.height;
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(img,0,0);
-    baseImage = img;
-    outlineData = ctx.getImageData(0,0,canvas.width,canvas.height);
+    baseImage=img;
+    outlineData=ctx.getImageData(0,0,canvas.width,canvas.height);
   };
-  img.src = URL.createObjectURL(file);
+  img.src=URL.createObjectURL(file);
 });
 
 function resetCanvas(){
@@ -137,124 +72,92 @@ function resetCanvas(){
   progressBar.style.width="0%";
 }
 
-// ============================
-// Detect edges (simple threshold)
-// ============================
+// Edge detection simple
 function detectEdges(imgData){
-  const width = imgData.width;
-  const height = imgData.height;
-  const data = imgData.data;
-  const edges = [];
-
-  for(let y=1;y<height-1;y++){
-    for(let x=1;x<width-1;x++){
-      const idx = (y*width + x)*4;
-      const brightness = (data[idx]+data[idx+1]+data[idx+2])/3;
-      if(brightness<128){
-        edges.push({x,y});
-      }
+  const w=imgData.width;
+  const h=imgData.height;
+  const data=imgData.data;
+  const edges=[];
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      const idx=(y*w+x)*4;
+      const brightness=(data[idx]+data[idx+1]+data[idx+2])/3;
+      if(brightness<128) edges.push({x,y});
     }
   }
   return edges;
 }
 
-// ============================
-// Draw shading along edges with light direction
-// ============================
+// Generate Greywash Whip Shading
 function generateShading(){
   if(!outlineData) return;
   ctx.putImageData(outlineData,0,0);
-
-  const edges = detectEdges(outlineData);
+  const edges=detectEdges(outlineData);
   let i=0;
-  const batchSize=1000; // number of strokes per batch
+  const batchSize=2000;
 
   function processBatch(){
-    for(let b=0;b<batchSize && i<edges.length;i++,b++){
-      const {x,y} = edges[i];
-      drawShadowStroke(x,y);
+    for(let b=0;b<batchSize&&i<edges.length;i++,b++){
+      const {x,y}=edges[i];
+      drawWhipGreywash(x,y);
     }
-    progressBar.style.width = ((i/edges.length)*100).toFixed(1)+"%";
-    if(i<edges.length){
-      requestAnimationFrame(processBatch);
-    } else {
-      drawGuide();
-    }
+    progressBar.style.width=((i/edges.length)*100).toFixed(1)+"%";
+    if(i<edges.length) requestAnimationFrame(processBatch);
+    else drawGuide();
   }
   requestAnimationFrame(processBatch);
 }
 
-// Draw a shadow stroke perpendicular to line, away from light
-function drawShadowStroke(x,y){
-  const sctx = ctx;
+function drawWhipGreywash(x,y){
+  const sctx=ctx;
   sctx.save();
   sctx.lineCap="round";
 
-  // Compute offset away from light
-  const dx = Math.cos(lightAngle);
-  const dy = Math.sin(lightAngle);
+  // Offset fra linje modsat lys
+  const dx=Math.cos(lightAngle);
+  const dy=Math.sin(lightAngle);
+  const offset=Math.random()*12;
 
-  // Randomize position a bit for natural shading
-  const offset = Math.random()*12;
-  const targetX = x - dx*offset;
-  const targetY = y - dy*offset;
+  const targetX=x-dx*offset;
+  const targetY=y-dy*offset;
 
-  // Determine zone based on offset distance
   let alpha,length;
-  if(offset<4){ alpha=0.26; length=12; } // Heavy
+  if(offset<4){ alpha=0.28; length=12; } // Heavy
   else if(offset<8){ alpha=0.18; length=8; } // Medium
-  else{ alpha=0.12; length=5; } // Light
+  else{ alpha=0.10; length=5; } // Light
 
-  const angle = lightAngle + Math.PI/2 + (Math.random()-0.5)*0.3;
+  const angle=lightAngle+Math.PI/2+(Math.random()-0.5)*0.35;
 
-  const grad = sctx.createLinearGradient(
-    x,y,
-    targetX + Math.cos(angle)*length,
-    targetY + Math.sin(angle)*length
-  );
-  grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
+  const grad=sctx.createLinearGradient(x,y,targetX+Math.cos(angle)*length,targetY+Math.sin(angle)*length);
+  grad.addColorStop(0,`rgba(0,0,0,${alpha})`);
   grad.addColorStop(1,"rgba(0,0,0,0)");
 
   sctx.strokeStyle=grad;
-  sctx.lineWidth = 1 + Math.random()*0.5;
+  sctx.lineWidth=1+Math.random()*0.5;
   sctx.beginPath();
   sctx.moveTo(x,y);
-  sctx.lineTo(
-    targetX + Math.cos(angle)*length,
-    targetY + Math.sin(angle)*length
-  );
+  sctx.lineTo(targetX+Math.cos(angle)*length,targetY+Math.sin(angle)*length);
   sctx.stroke();
   sctx.restore();
 }
 
-// ============================
-// Auto guide – Needle + Greywash
-// ============================
+// Auto-guide
 function drawGuide(){
-  guide.innerHTML = `
+  guide.innerHTML=`
 <b>Auto Tattoo Guide – Poseidon Lucius</b><br><br>
 <b>Heavy shadow zone</b><br>
 Needle: 11–13RM<br>
 Greywash: 1:3 – 1:4<br>
 Voltage: 8.8–9.2V<br><br>
-
 <b>Medium shadow zone</b><br>
 Needle: 15–17M<br>
 Greywash: 1:6 – 1:8<br>
 Voltage: 7.5–8.0V<br><br>
-
 <b>Light fade / whip</b><br>
 Needle: 17–23CM<br>
 Greywash: 1:10 – 1:12<br>
 Voltage: 6.8–7.2V<br>
 `;
-}
-
-// ============================
-// PWA Service Worker
-// ============================
-if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("sw.js");
 }
 </script>
 </body>
