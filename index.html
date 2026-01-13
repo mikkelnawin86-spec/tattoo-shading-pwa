@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Line-Aware</title>
+<title>Tattoo Shading Pro – Ultimate</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#111111">
@@ -84,7 +84,7 @@ input[type=file]{ color:#fff; }
 </head>
 
 <body>
-<header>Tattoo Shading Pro – Line-Aware</header>
+<header>Tattoo Shading Pro – Ultimate</header>
 
 <main>
   <input type="file" accept="image/*" id="upload">
@@ -138,90 +138,90 @@ function resetCanvas(){
 }
 
 // ============================
-// Edge detection (simple threshold)
+// Detect edges (simple threshold)
 // ============================
 function detectEdges(imgData){
   const width = imgData.width;
   const height = imgData.height;
   const data = imgData.data;
-  const edges = new Uint8ClampedArray(width*height);
+  const edges = [];
 
   for(let y=1;y<height-1;y++){
     for(let x=1;x<width-1;x++){
-      const idx = (y*width+x)*4;
+      const idx = (y*width + x)*4;
       const brightness = (data[idx]+data[idx+1]+data[idx+2])/3;
-      // Threshold simple edge detection
-      if(brightness<128) edges[y*width+x] = 1; 
+      if(brightness<128){
+        edges.push({x,y});
+      }
     }
   }
-  return {edges,width,height};
+  return edges;
 }
 
 // ============================
-// Line-aware shading
+// Draw shading along edges with light direction
 // ============================
 function generateShading(){
   if(!outlineData) return;
   ctx.putImageData(outlineData,0,0);
 
-  const {edges,width,height} = detectEdges(outlineData);
-
-  let y=0;
-  const batchSize=10;
+  const edges = detectEdges(outlineData);
+  let i=0;
+  const batchSize=1000; // number of strokes per batch
 
   function processBatch(){
-    for(let i=0;i<batchSize && y<height;y++,i++){
-      for(let x=0;x<width;x++){
-        if(edges[y*width+x]===1){
-          drawLineAwareStroke(x,y,edges,width,height);
-        }
-      }
+    for(let b=0;b<batchSize && i<edges.length;i++,b++){
+      const {x,y} = edges[i];
+      drawShadowStroke(x,y);
     }
-    progressBar.style.width=((y/height)*100).toFixed(1)+"%";
-    if(y<height) requestAnimationFrame(processBatch);
-    else drawGuide();
+    progressBar.style.width = ((i/edges.length)*100).toFixed(1)+"%";
+    if(i<edges.length){
+      requestAnimationFrame(processBatch);
+    } else {
+      drawGuide();
+    }
   }
-
   requestAnimationFrame(processBatch);
 }
 
-// Draw stroke along line in relation to light source
-function drawLineAwareStroke(x,y,edges,width,height){
+// Draw a shadow stroke perpendicular to line, away from light
+function drawShadowStroke(x,y){
   const sctx = ctx;
   sctx.save();
   sctx.lineCap="round";
 
-  // Heavy / Medium / Light based on distance to light source
+  // Compute offset away from light
   const dx = Math.cos(lightAngle);
   const dy = Math.sin(lightAngle);
-  const distance = dx*(x-canvas.width/2)+dy*(y-canvas.height/2);
 
+  // Randomize position a bit for natural shading
+  const offset = Math.random()*12;
+  const targetX = x - dx*offset;
+  const targetY = y - dy*offset;
+
+  // Determine zone based on offset distance
   let alpha,length;
-  if(distance<0){ alpha=0.26; length=12; } // Heavy
-  else if(distance<20){ alpha=0.18; length=8; } // Medium
+  if(offset<4){ alpha=0.26; length=12; } // Heavy
+  else if(offset<8){ alpha=0.18; length=8; } // Medium
   else{ alpha=0.12; length=5; } // Light
 
-  // Stroke direction perpendicular to edge
   const angle = lightAngle + Math.PI/2 + (Math.random()-0.5)*0.3;
-
-  const circleX = Math.cos(y/8)*1.2;
-  const circleY = Math.sin(x/10)*1.2;
 
   const grad = sctx.createLinearGradient(
     x,y,
-    x+Math.cos(angle)*length+circleX,
-    y+Math.sin(angle)*length+circleY
+    targetX + Math.cos(angle)*length,
+    targetY + Math.sin(angle)*length
   );
   grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
   grad.addColorStop(1,"rgba(0,0,0,0)");
 
   sctx.strokeStyle=grad;
-  sctx.lineWidth = 1+Math.random()*0.5;
+  sctx.lineWidth = 1 + Math.random()*0.5;
   sctx.beginPath();
   sctx.moveTo(x,y);
   sctx.lineTo(
-    x+Math.cos(angle)*length+circleX,
-    y+Math.sin(angle)*length+circleY
+    targetX + Math.cos(angle)*length,
+    targetY + Math.sin(angle)*length
   );
   sctx.stroke();
   sctx.restore();
