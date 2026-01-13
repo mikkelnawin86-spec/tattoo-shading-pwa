@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tattoo Shading Pro – Advanced Greywash</title>
+<title>Tattoo Shading Pro – Edge-Follow Greywash</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#111111">
@@ -18,17 +18,18 @@ header{padding:12px;text-align:center;background:#000;font-weight:600;}
 main{display:grid;gap:10px;padding:10px;}
 canvas{width:100%;max-width:900px;margin:auto;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,0.4);}
 .controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
-button, select{padding:10px 14px;border-radius:8px;border:none;background:#222;color:#fff;font-weight:600;}
-button:active, select:active{background:#444;}
+button, select, input[type=range]{padding:10px 14px;border-radius:8px;border:none;background:#222;color:#fff;font-weight:600;}
+button:active, select:active, input:active{background:#444;}
 input[type=file]{color:#fff;}
 .progress-container{max-width:900px;margin:auto;background:#222;border-radius:8px;overflow:hidden;height:18px;margin-top:8px;}
 .progress-bar{height:100%;width:0%;background:#4caf50;transition:width 0.05s linear;}
+.slider-container{display:grid;gap:6px;max-width:900px;margin:auto;}
 .guide{max-width:900px;margin:auto;background:#222;padding:12px;border-radius:8px;font-size:14px;line-height:1.5;margin-top:8px;}
 </style>
 </head>
 <body>
 
-<header>Tattoo Shading Pro – Advanced Greywash</header>
+<header>Tattoo Shading Pro – Edge-Follow Greywash</header>
 
 <main>
 <input type="file" accept="image/*" id="upload">
@@ -37,6 +38,17 @@ input[type=file]{color:#fff;}
   <option value="illustrative">Illustrative</option>
   <option value="blackwork">Blackwork</option>
 </select>
+
+<div class="slider-container">
+<label>Heavy intensity <span id="heavyVal">0.35</span></label>
+<input type="range" id="heavySlider" min="0.1" max="0.6" step="0.01" value="0.35">
+<label>Medium intensity <span id="mediumVal">0.25</span></label>
+<input type="range" id="mediumSlider" min="0.05" max="0.5" step="0.01" value="0.25">
+<label>Light intensity <span id="lightVal">0.15</span></label>
+<input type="range" id="lightSlider" min="0.02" max="0.3" step="0.01" value="0.15">
+<label>Spread distance <span id="spreadVal">20</span>px</label>
+<input type="range" id="spreadSlider" min="5" max="50" step="1" value="20">
+</div>
 
 <canvas id="canvas"></canvas>
 
@@ -66,6 +78,22 @@ let outlineData=null;
 const lightAngle=-Math.PI/3;
 let layers={heavy:null,medium:null,light:null};
 
+const heavySlider=document.getElementById("heavySlider");
+const mediumSlider=document.getElementById("mediumSlider");
+const lightSlider=document.getElementById("lightSlider");
+const spreadSlider=document.getElementById("spreadSlider");
+
+function updateSliderLabels(){
+  document.getElementById("heavyVal").textContent=heavySlider.value;
+  document.getElementById("mediumVal").textContent=mediumSlider.value;
+  document.getElementById("lightVal").textContent=lightSlider.value;
+  document.getElementById("spreadVal").textContent=spreadSlider.value;
+}
+[heavySlider,mediumSlider,lightSlider,spreadSlider].forEach(s=>s.addEventListener("input",()=>{updateSliderLabels();}));
+
+updateSliderLabels();
+
+// Handle upload
 document.getElementById("upload").addEventListener("change",e=>{
   const file=e.target.files[0];
   if(!file) return;
@@ -96,7 +124,7 @@ function resetCanvas(){
   progressBar.style.width="0%";
 }
 
-// Edge detection
+// Simple edge detection
 function detectEdges(imgData){
   const w=imgData.width,h=imgData.height;
   const data=imgData.data;
@@ -111,11 +139,11 @@ function detectEdges(imgData){
   return edges;
 }
 
-// Shading parameters per preset
+// Presets
 const presets={
-  realism:{heavy:[0,8,0.35,18],medium:[8,16,0.25,14],light:[16,28,0.15,10]},
-  illustrative:{heavy:[0,6,0.4,14],medium:[6,12,0.3,10],light:[12,24,0.18,8]},
-  blackwork:{heavy:[0,4,0.5,12],medium:[4,8,0.3,8],light:[8,16,0.1,6]}
+  realism:[0,8,14,8,16,12,16,28,10],
+  illustrative:[0,6,14,6,12,10,12,24,8],
+  blackwork:[0,4,12,4,8,8,8,16,6]
 };
 
 function generateShading(){
@@ -124,17 +152,22 @@ function generateShading(){
   const edges=detectEdges(outlineData);
   let i=0;
   const batchSize=2000;
+
   const preset=presets[presetSelect.value];
+  const heavyIntensity=parseFloat(heavySlider.value);
+  const mediumIntensity=parseFloat(mediumSlider.value);
+  const lightIntensity=parseFloat(lightSlider.value);
+  const spread=parseInt(spreadSlider.value);
 
   function processBatch(){
     for(let b=0;b<batchSize && i<edges.length;i++,b++){
       const {x,y}=edges[i];
-      drawLayer(x,y,layers.heavy,...preset.heavy);
-      drawLayer(x,y,layers.medium,...preset.medium);
-      drawLayer(x,y,layers.light,...preset.light);
+      drawLayer(x,y,layers.heavy,0,spread,heavyIntensity,18);
+      drawLayer(x,y,layers.medium,spread/3,spread*0.7,mediumIntensity,14);
+      drawLayer(x,y,layers.light,spread*0.6,spread,lightIntensity,10);
     }
     const pct=((i/edges.length)*100).toFixed(1)+"%";
-    progressBar.style.width=pct;
+    progressBar.style.width=pct+"%";
     progressBar.textContent=pct+"%";
     if(i<edges.length) requestAnimationFrame(processBatch);
     else combineLayers();
@@ -143,21 +176,20 @@ function generateShading(){
   requestAnimationFrame(processBatch);
 }
 
-// Vægtet curvature shading
+// Edge-following layer
 function drawLayer(x,y,layer,offsetMin,offsetMax,alpha,length){
   const sctx=layer.getContext("2d");
   sctx.save();
   sctx.lineCap="round";
 
-  // Curvature simulation: tilfældig variation for “surface feel”
-  const curvature=Math.random()*0.35 - 0.15; 
+  const curvature=Math.random()*0.35-0.15;
   const dx=Math.cos(lightAngle)*(1+curvature);
   const dy=Math.sin(lightAngle)*(1+curvature);
-  const offset=offsetMin + Math.random()*(offsetMax-offsetMin);
-  const tx=x - dx*offset;
-  const ty=y - dy*offset;
+  const offset=offsetMin+Math.random()*(offsetMax-offsetMin);
+  const tx=x-dx*offset;
+  const ty=y-dy*offset;
 
-  const angle=lightAngle + Math.PI/2 + (Math.random()-0.5)*0.35;
+  const angle=lightAngle+Math.PI/2+(Math.random()-0.5)*0.35;
 
   const grad=sctx.createLinearGradient(x,y,tx+Math.cos(angle)*length,ty+Math.sin(angle)*length);
   grad.addColorStop(0,`rgba(0,0,0,${alpha})`);
@@ -194,13 +226,11 @@ function exportPDF(){
 function drawGuide(){
   guide.innerHTML=`
 <b>Auto Tattoo Guide – Poseidon Lucius</b><br><br>
-<b>Heavy shadows:</b><br>
-11–13RM · Greywash 1:3–1:4 · 8.8–9.2V<br><br>
-<b>Medium tones:</b><br>
-15–17M · Greywash 1:6–1:8 · 7.5–8.0V<br><br>
-<b>Light fade / whip:</b><br>
-17–23CM · Greywash 1:10–1:12 · 6.8–7.2V<br><br>
-<b>Preset style:</b> ${presetSelect.value} · Vægtet curvature shading
+<b>Heavy shadows:</b> 11–13RM · Greywash 1:3–1:4 · 8.8–9.2V<br>
+<b>Medium tones:</b> 15–17M · Greywash 1:6–1:8 · 7.5–8.0V<br>
+<b>Light fade / whip:</b> 17–23CM · Greywash 1:10–1:12 · 6.8–7.2V<br><br>
+<b>Preset style:</b> ${presetSelect.value} · Vægtet curvature shading<br>
+<b>Adjust sliders to fine-tune greywash and spread</b>
 `;
 }
 
@@ -208,6 +238,5 @@ if("serviceWorker" in navigator){
   navigator.serviceWorker.register("sw.js");
 }
 </script>
-
 </body>
 </html>
